@@ -1,0 +1,6 @@
+{
+  "name": "ShareSpace",
+  "description": "College-only academic resource sharing platform for students to list, lend, borrow, exchange, and return textbooks, calculators, lab equipment, and notes.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,239 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Public campus profile for a verified student or admin on ShareSpace (no PII).",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID." },
+        "displayName": { "type": "string", "description": "Student full name." },
+        "department": { "type": "string", "description": "Academic department." },
+        "year": { "type": "string", "description": "Academic year (e.g., Freshman, Junior, Grad)." },
+        "campusDomain": { "type": "string", "description": "Verified college email domain (e.g., stanford.edu)." },
+        "avatarKey": { "type": "string", "description": "Avatar photo URL or campus avatar preset key." },
+        "role": { "type": "string", "enum": ["student", "admin"], "description": "User role." },
+        "banned": { "type": "boolean", "description": "Whether the user is banned by an admin." },
+        "banReason": { "type": "string", "description": "Reason for ban if banned." },
+        "campusVerified": { "type": "boolean", "description": "Whether college email domain is verified." },
+        "averageRating": { "type": "number", "description": "Average user rating from 0 to 5." },
+        "reviewCount": { "type": "integer", "description": "Total number of reviews received." },
+        "itemsListedCount": { "type": "integer", "description": "Number of listings created." },
+        "itemsBorrowedCount": { "type": "integer", "description": "Number of items borrowed." },
+        "isPublic": { "type": "boolean", "description": "Whether profile is discoverable by campus peers." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp (FieldValue.serverTimestamp())." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last update timestamp (FieldValue.serverTimestamp())." }
+      },
+      "required": ["uid", "displayName", "department", "year", "campusDomain", "role", "banned", "campusVerified", "averageRating", "reviewCount", "itemsListedCount", "itemsBorrowedCount", "isPublic", "createdAt", "updatedAt"]
+    },
+    "UserPrivateContact": {
+      "title": "UserPrivateContact",
+      "description": "Private PII contact information isolated from public profiles.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Owner Firebase Auth UID." },
+        "email": { "type": "string", "description": "Primary Google account email." },
+        "collegeEmail": { "type": "string", "description": "College domain email address." },
+        "phone": { "type": "string", "description": "Campus contact phone number." },
+        "emailNotificationsEnabled": { "type": "boolean", "description": "Email notifications opt-in." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Update timestamp." }
+      },
+      "required": ["uid", "email", "collegeEmail", "phone", "emailNotificationsEnabled", "createdAt", "updatedAt"]
+    },
+    "WishlistItem": {
+      "title": "WishlistItem",
+      "description": "Saved resource in a student's wishlist.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Owner UID." },
+        "resourceId": { "type": "string", "description": "Saved resource ID." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Saved timestamp." }
+      },
+      "required": ["userId", "resourceId", "createdAt"]
+    },
+    "ResourceListing": {
+      "title": "ResourceListing",
+      "description": "Academic resource listing (textbooks, calculators, lab equipment, notes, other).",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "description": "Listing creator UID." },
+        "ownerName": { "type": "string", "description": "Owner display name." },
+        "ownerDepartment": { "type": "string", "description": "Owner department." },
+        "ownerRating": { "type": "number", "description": "Owner average rating." },
+        "title": { "type": "string", "description": "Resource title." },
+        "description": { "type": "string", "description": "Detailed description." },
+        "category": { "type": "string", "enum": ["textbooks", "calculators", "lab_equipment", "notes", "other"] },
+        "condition": { "type": "string", "enum": ["new", "like_new", "good", "fair"] },
+        "mode": { "type": "string", "enum": ["lend", "exchange", "free"] },
+        "availability": { "type": "string", "enum": ["available", "borrowed", "unavailable"] },
+        "maxBorrowDays": { "type": "integer", "description": "Maximum allowed borrow duration in days." },
+        "pickupLocation": { "type": "string", "description": "Campus pickup location." },
+        "department": { "type": "string", "description": "Relevant academic department." },
+        "photoUrls": { "type": "array", "description": "Up to 5 photo references (drawable keys, data URIs, or URLs)." },
+        "averageRating": { "type": "number", "description": "Listing average rating." },
+        "reviewCount": { "type": "integer", "description": "Number of reviews on this listing." },
+        "status": { "type": "string", "enum": ["active", "removed"] },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last update timestamp." }
+      },
+      "required": ["ownerId", "ownerName", "ownerDepartment", "ownerRating", "title", "description", "category", "condition", "mode", "availability", "maxBorrowDays", "pickupLocation", "department", "photoUrls", "averageRating", "reviewCount", "status", "createdAt", "updatedAt"]
+    },
+    "ResourceBookingSlot": {
+      "title": "ResourceBookingSlot",
+      "description": "Date range slot for overlap detection without exposing request messages.",
+      "type": "object",
+      "properties": {
+        "resourceId": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "borrowerId": { "type": "string" },
+        "startDateMillis": { "type": "integer" },
+        "endDateMillis": { "type": "integer" },
+        "status": { "type": "string", "enum": ["pending", "approved", "borrowed", "overdue", "returned", "rejected", "cancelled"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["resourceId", "ownerId", "borrowerId", "startDateMillis", "endDateMillis", "status", "createdAt", "updatedAt"]
+    },
+    "BorrowRequest": {
+      "title": "BorrowRequest",
+      "description": "Borrow, exchange, or free claim request between borrower and owner.",
+      "type": "object",
+      "properties": {
+        "resourceId": { "type": "string" },
+        "resourceTitle": { "type": "string" },
+        "resourceCategory": { "type": "string" },
+        "resourcePhoto": { "type": "string" },
+        "resourceMode": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "ownerName": { "type": "string" },
+        "borrowerId": { "type": "string" },
+        "borrowerName": { "type": "string" },
+        "borrowerDepartment": { "type": "string" },
+        "participantIds": { "type": "array", "description": "Array containing [ownerId, borrowerId]." },
+        "startDateMillis": { "type": "integer" },
+        "endDateMillis": { "type": "integer" },
+        "dueDateMillis": { "type": "integer" },
+        "message": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected", "borrowed", "returned", "cancelled", "overdue"] },
+        "rejectionReason": { "type": "string" },
+        "extensionRequested": { "type": "boolean" },
+        "requestedExtensionDays": { "type": "integer" },
+        "extensionStatus": { "type": "string", "enum": ["none", "pending", "approved", "rejected"] },
+        "ownerReviewed": { "type": "boolean" },
+        "borrowerReviewed": { "type": "boolean" },
+        "reminderDayBeforeSent": { "type": "boolean" },
+        "reminderDueDaySent": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["resourceId", "resourceTitle", "resourceCategory", "resourcePhoto", "resourceMode", "ownerId", "ownerName", "borrowerId", "borrowerName", "borrowerDepartment", "participantIds", "startDateMillis", "endDateMillis", "dueDateMillis", "message", "status", "rejectionReason", "extensionRequested", "requestedExtensionDays", "extensionStatus", "ownerReviewed", "borrowerReviewed", "reminderDayBeforeSent", "reminderDueDaySent", "createdAt", "updatedAt"]
+    },
+    "Review": {
+      "title": "Review",
+      "description": "1-5 star review tied to a completed borrow transaction.",
+      "type": "object",
+      "properties": {
+        "transactionId": { "type": "string" },
+        "resourceId": { "type": "string" },
+        "resourceTitle": { "type": "string" },
+        "reviewerId": { "type": "string" },
+        "reviewerName": { "type": "string" },
+        "revieweeId": { "type": "string" },
+        "revieweeName": { "type": "string" },
+        "direction": { "type": "string", "enum": ["borrower_to_owner", "owner_to_borrower"] },
+        "rating": { "type": "integer" },
+        "comment": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["transactionId", "resourceId", "resourceTitle", "reviewerId", "reviewerName", "revieweeId", "revieweeName", "direction", "rating", "comment", "createdAt"]
+    },
+    "AppNotification": {
+      "title": "AppNotification",
+      "description": "In-app notification with email dispatch record.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "body": { "type": "string" },
+        "type": { "type": "string", "enum": ["request_received", "request_approved", "request_rejected", "due_tomorrow", "due_today", "overdue", "extension_request", "extension_resolved", "returned", "review_received", "admin_notice"] },
+        "relatedId": { "type": "string" },
+        "isRead": { "type": "boolean" },
+        "emailDispatched": { "type": "boolean" },
+        "emailRecipient": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "title", "body", "type", "relatedId", "isRead", "emailDispatched", "emailRecipient", "createdAt"]
+    },
+    "ModerationReport": {
+      "title": "ModerationReport",
+      "description": "User or listing report reviewed by campus admins.",
+      "type": "object",
+      "properties": {
+        "reporterId": { "type": "string" },
+        "reporterName": { "type": "string" },
+        "targetType": { "type": "string", "enum": ["listing", "user"] },
+        "targetId": { "type": "string" },
+        "targetName": { "type": "string" },
+        "reason": { "type": "string" },
+        "details": { "type": "string" },
+        "status": { "type": "string", "enum": ["open", "resolved", "dismissed"] },
+        "adminAction": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["reporterId", "reporterName", "targetType", "targetId", "targetName", "reason", "details", "status", "adminAction", "createdAt", "updatedAt"]
+    },
+    "SeedConfig": {
+      "title": "SeedConfig",
+      "description": "One-time demo catalog initialization marker.",
+      "type": "object",
+      "properties": {
+        "seededBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["seededBy", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Public campus profiles."
+    },
+    "/users/{userId}/private/{docId}": {
+      "schema": { "$ref": "#/entities/UserPrivateContact" },
+      "description": "Private PII contact data isolated per user."
+    },
+    "/users/{userId}/wishlist/{resourceId}": {
+      "schema": { "$ref": "#/entities/WishlistItem" },
+      "description": "Saved wishlist items per user."
+    },
+    "/resources/{resourceId}": {
+      "schema": { "$ref": "#/entities/ResourceListing" },
+      "description": "Academic resource listings."
+    },
+    "/resources/{resourceId}/bookings/{bookingId}": {
+      "schema": { "$ref": "#/entities/ResourceBookingSlot" },
+      "description": "Active date ranges for overlap checks."
+    },
+    "/borrow_requests/{requestId}": {
+      "schema": { "$ref": "#/entities/BorrowRequest" },
+      "description": "Borrow, exchange, and free claim transactions."
+    },
+    "/reviews/{reviewId}": {
+      "schema": { "$ref": "#/entities/Review" },
+      "description": "Transaction ratings and reviews."
+    },
+    "/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/AppNotification" },
+      "description": "In-app and email notification records."
+    },
+    "/reports/{reportId}": {
+      "schema": { "$ref": "#/entities/ModerationReport" },
+      "description": "Admin moderation reports."
+    },
+    "/app_config/{configId}": {
+      "schema": { "$ref": "#/entities/SeedConfig" },
+      "description": "One-time seed marker."
+    }
+  }
+}

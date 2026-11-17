@@ -1,0 +1,488 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- GLOBAL HELPERS ---
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        ('email_verified' in request.auth.token &&
+         request.auth.token.email_verified == true &&
+         'email' in request.auth.token &&
+         request.auth.token.email == 'donthusagar1@gmail.com')
+      );
+    }
+
+    function callerUserPath() {
+      return /databases/$(database)/documents/users/$(request.auth.uid);
+    }
+
+    function isNotBanned() {
+      return !exists(callerUserPath()) || get(callerUserPath()).data.banned == false;
+    }
+
+    function isInitialSeedWindow() {
+      return !exists(/databases/$(database)/documents/app_config/seed_v1);
+    }
+
+    function isValidTimestamp(ts) {
+      return ts is timestamp && ts <= request.time;
+    }
+
+    // --- ENTITY VALIDATION HELPERS ---
+
+    function isValidUserProfile(data) {
+      return data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 &&
+             data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 80 &&
+             data.department is string && data.department.size() >= 1 && data.department.size() <= 80 &&
+             data.year is string && data.year.size() >= 1 && data.year.size() <= 40 &&
+             data.campusDomain is string && data.campusDomain.size() >= 1 && data.campusDomain.size() <= 80 &&
+             (!('avatarKey' in data) || (data.avatarKey is string && data.avatarKey.size() <= 100000)) &&
+             data.role in ['student', 'admin'] &&
+             data.banned is bool &&
+             (!('banReason' in data) || (data.banReason is string && data.banReason.size() <= 300)) &&
+             data.campusVerified is bool &&
+             data.averageRating is number && data.averageRating >= 0 && data.averageRating <= 5 &&
+             data.reviewCount is int && data.reviewCount >= 0 &&
+             data.itemsListedCount is int && data.itemsListedCount >= 0 &&
+             data.itemsBorrowedCount is int && data.itemsBorrowedCount >= 0 &&
+             data.isPublic is bool &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidUserPrivateContact(data) {
+      return data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 &&
+             data.email is string && data.email.size() >= 3 && data.email.size() <= 160 &&
+             data.collegeEmail is string && data.collegeEmail.size() <= 160 &&
+             data.phone is string && data.phone.size() <= 40 &&
+             data.emailNotificationsEnabled is bool &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidWishlistItem(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.resourceId is string && data.resourceId.size() >= 1 && data.resourceId.size() <= 128 &&
+             isValidTimestamp(data.createdAt);
+    }
+
+    function isValidResource(data) {
+      return data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 &&
+             data.ownerName is string && data.ownerName.size() >= 1 && data.ownerName.size() <= 80 &&
+             data.ownerDepartment is string && data.ownerDepartment.size() >= 1 && data.ownerDepartment.size() <= 80 &&
+             data.ownerRating is number && data.ownerRating >= 0 && data.ownerRating <= 5 &&
+             data.title is string && data.title.size() >= 2 && data.title.size() <= 120 &&
+             data.description is string && data.description.size() >= 5 && data.description.size() <= 1500 &&
+             data.category in ['textbooks', 'calculators', 'lab_equipment', 'notes', 'other'] &&
+             data.condition in ['new', 'like_new', 'good', 'fair'] &&
+             data.mode in ['lend', 'exchange', 'free'] &&
+             data.availability in ['available', 'borrowed', 'unavailable'] &&
+             data.maxBorrowDays is int && data.maxBorrowDays >= 1 && data.maxBorrowDays <= 180 &&
+             data.pickupLocation is string && data.pickupLocation.size() >= 2 && data.pickupLocation.size() <= 160 &&
+             data.department is string && data.department.size() >= 2 && data.department.size() <= 80 &&
+             data.photoUrls is list && data.photoUrls.size() <= 5 &&
+             (data.photoUrls.size() == 0 || (data.photoUrls[0] is string && data.photoUrls[0].size() <= 120000)) &&
+             data.averageRating is number && data.averageRating >= 0 && data.averageRating <= 5 &&
+             data.reviewCount is int && data.reviewCount >= 0 &&
+             data.status in ['active', 'removed'] &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidBookingSlot(data) {
+      return data.resourceId is string && isValidId(data.resourceId) &&
+             data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 &&
+             data.borrowerId is string && data.borrowerId.size() >= 1 && data.borrowerId.size() <= 128 &&
+             data.startDateMillis is int && data.startDateMillis > 0 &&
+             data.endDateMillis is int && data.endDateMillis >= data.startDateMillis &&
+             data.status in ['pending', 'approved', 'borrowed', 'overdue', 'returned', 'rejected', 'cancelled'] &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidBorrowRequest(data) {
+      return data.resourceId is string && isValidId(data.resourceId) &&
+             data.resourceTitle is string && data.resourceTitle.size() >= 1 && data.resourceTitle.size() <= 120 &&
+             data.resourceCategory is string && data.resourceCategory.size() >= 1 && data.resourceCategory.size() <= 40 &&
+             data.resourcePhoto is string && data.resourcePhoto.size() <= 120000 &&
+             data.resourceMode in ['lend', 'exchange', 'free'] &&
+             data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 &&
+             data.ownerName is string && data.ownerName.size() >= 1 && data.ownerName.size() <= 80 &&
+             data.borrowerId is string && data.borrowerId.size() >= 1 && data.borrowerId.size() <= 128 &&
+             data.borrowerName is string && data.borrowerName.size() >= 1 && data.borrowerName.size() <= 80 &&
+             data.borrowerDepartment is string && data.borrowerDepartment.size() >= 1 && data.borrowerDepartment.size() <= 80 &&
+             data.participantIds is list && data.participantIds.size() == 2 &&
+             data.ownerId in data.participantIds && data.borrowerId in data.participantIds &&
+             data.ownerId != data.borrowerId &&
+             data.startDateMillis is int && data.startDateMillis > 0 &&
+             data.endDateMillis is int && data.endDateMillis >= data.startDateMillis &&
+             data.dueDateMillis is int && data.dueDateMillis >= data.startDateMillis &&
+             data.message is string && data.message.size() <= 500 &&
+             data.status in ['pending', 'approved', 'rejected', 'borrowed', 'returned', 'cancelled', 'overdue'] &&
+             data.rejectionReason is string && data.rejectionReason.size() <= 300 &&
+             data.extensionRequested is bool &&
+             data.requestedExtensionDays is int && data.requestedExtensionDays >= 0 && data.requestedExtensionDays <= 60 &&
+             data.extensionStatus in ['none', 'pending', 'approved', 'rejected'] &&
+             data.ownerReviewed is bool &&
+             data.borrowerReviewed is bool &&
+             data.reminderDayBeforeSent is bool &&
+             data.reminderDueDaySent is bool &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidReview(data) {
+      return data.transactionId is string && isValidId(data.transactionId) &&
+             data.resourceId is string && isValidId(data.resourceId) &&
+             data.resourceTitle is string && data.resourceTitle.size() >= 1 && data.resourceTitle.size() <= 120 &&
+             data.reviewerId is string && data.reviewerId.size() >= 1 && data.reviewerId.size() <= 128 &&
+             data.reviewerName is string && data.reviewerName.size() >= 1 && data.reviewerName.size() <= 80 &&
+             data.revieweeId is string && data.revieweeId.size() >= 1 && data.revieweeId.size() <= 128 &&
+             data.revieweeName is string && data.revieweeName.size() >= 1 && data.revieweeName.size() <= 80 &&
+             data.reviewerId != data.revieweeId &&
+             data.direction in ['borrower_to_owner', 'owner_to_borrower'] &&
+             data.rating is int && data.rating >= 1 && data.rating <= 5 &&
+             data.comment is string && data.comment.size() <= 600 &&
+             isValidTimestamp(data.createdAt);
+    }
+
+    function isValidNotification(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 120 &&
+             data.body is string && data.body.size() >= 1 && data.body.size() <= 400 &&
+             data.type in ['request_received', 'request_approved', 'request_rejected', 'due_tomorrow', 'due_today', 'overdue', 'extension_request', 'extension_resolved', 'returned', 'review_received', 'admin_notice'] &&
+             data.relatedId is string && data.relatedId.size() <= 128 &&
+             data.isRead is bool &&
+             data.emailDispatched is bool &&
+             data.emailRecipient is string && data.emailRecipient.size() <= 160 &&
+             isValidTimestamp(data.createdAt);
+    }
+
+    function isValidReport(data) {
+      return data.reporterId is string && data.reporterId.size() >= 1 && data.reporterId.size() <= 128 &&
+             data.reporterName is string && data.reporterName.size() >= 1 && data.reporterName.size() <= 80 &&
+             data.targetType in ['listing', 'user'] &&
+             data.targetId is string && data.targetId.size() >= 1 && data.targetId.size() <= 128 &&
+             data.targetName is string && data.targetName.size() >= 1 && data.targetName.size() <= 120 &&
+             data.reason is string && data.reason.size() >= 2 && data.reason.size() <= 120 &&
+             data.details is string && data.details.size() <= 600 &&
+             data.status in ['open', 'resolved', 'dismissed'] &&
+             data.adminAction is string && data.adminAction.size() <= 300 &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    // --- COLLECTIONS ---
+
+    match /admins/{adminUid} {
+      allow get: if isSignedIn() && (request.auth.uid == adminUid || isAdmin());
+      allow list, write: if false;
+    }
+
+    match /app_config/{configId} {
+      allow get: if isSignedIn() && configId == 'seed_v1';
+      allow create: if isSignedIn() && configId == 'seed_v1' &&
+                       incoming().keys().hasAll(['seededBy', 'createdAt']) &&
+                       incoming().keys().hasOnly(['seededBy', 'createdAt']) &&
+                       incoming().seededBy == request.auth.uid &&
+                       isValidTimestamp(incoming().createdAt);
+      allow list, update, delete: if false;
+    }
+
+    // 1. Public Campus User Profiles (No PII)
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && (
+        request.auth.uid == userId ||
+        existing().isPublic == true ||
+        isAdmin()
+      );
+      allow list: if isSignedIn() && (existing().isPublic == true || isAdmin());
+
+      allow create: if isSignedIn() && isValidId(userId) &&
+                       incoming().keys().hasAll(['uid', 'displayName', 'department', 'year', 'campusDomain', 'role', 'banned', 'campusVerified', 'averageRating', 'reviewCount', 'itemsListedCount', 'itemsBorrowedCount', 'isPublic', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['uid', 'displayName', 'department', 'year', 'campusDomain', 'avatarKey', 'role', 'banned', 'banReason', 'campusVerified', 'averageRating', 'reviewCount', 'itemsListedCount', 'itemsBorrowedCount', 'isPublic', 'createdAt', 'updatedAt']) &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().uid == userId &&
+                       (
+                         (request.auth.uid == userId && incoming().banned == false && (incoming().role == 'student' || isAdmin())) ||
+                         (isAdmin()) ||
+                         (userId.matches('^seed_.*') && isInitialSeedWindow() && incoming().role == 'student' && incoming().banned == false)
+                       );
+
+      allow update: if isSignedIn() && isValidId(userId) &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().uid == existing().uid &&
+                       incoming().createdAt == existing().createdAt && (
+                         // Admin moderation (ban/unban, role)
+                         (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'department', 'year', 'campusDomain', 'avatarKey', 'role', 'banned', 'banReason', 'campusVerified', 'averageRating', 'reviewCount', 'itemsListedCount', 'itemsBorrowedCount', 'updatedAt'])) ||
+                         // Own profile edit (cannot alter role or banned)
+                         (request.auth.uid == userId && isNotBanned() &&
+                          incoming().role == existing().role &&
+                          incoming().banned == existing().banned &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'department', 'year', 'campusDomain', 'avatarKey', 'campusVerified', 'itemsListedCount', 'itemsBorrowedCount', 'updatedAt'])) ||
+                         // Rating aggregate update when a peer submits a review
+                         (isNotBanned() &&
+                          incoming().role == existing().role &&
+                          incoming().banned == existing().banned &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['averageRating', 'reviewCount', 'updatedAt'])) ||
+                         // Borrow counter increment when owner marks borrowed
+                         (isNotBanned() &&
+                          incoming().role == existing().role &&
+                          incoming().banned == existing().banned &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['itemsBorrowedCount', 'updatedAt']))
+                       );
+
+      allow delete: if isAdmin();
+
+      // 1b. Private PII Contact Info
+      match /private/{docId} {
+        allow get, list: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+        allow create: if isSignedIn() && docId == 'contact' &&
+                         request.auth.uid == userId &&
+                         incoming().keys().hasAll(['uid', 'email', 'collegeEmail', 'phone', 'emailNotificationsEnabled', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['uid', 'email', 'collegeEmail', 'phone', 'emailNotificationsEnabled', 'createdAt', 'updatedAt']) &&
+                         incoming().uid == userId &&
+                         isValidUserPrivateContact(incoming());
+        allow update: if isSignedIn() && docId == 'contact' &&
+                         request.auth.uid == userId &&
+                         incoming().uid == existing().uid &&
+                         incoming().createdAt == existing().createdAt &&
+                         isValidUserPrivateContact(incoming()) &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['email', 'collegeEmail', 'phone', 'emailNotificationsEnabled', 'updatedAt']);
+        allow delete: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      }
+
+      // 1c. User-Scoped Wishlist
+      match /wishlist/{resourceId} {
+        allow get, list: if isSignedIn() && request.auth.uid == userId;
+        allow create: if isSignedIn() && isValidId(resourceId) &&
+                         request.auth.uid == userId && isNotBanned() &&
+                         incoming().keys().hasAll(['userId', 'resourceId', 'createdAt']) &&
+                         incoming().keys().hasOnly(['userId', 'resourceId', 'createdAt']) &&
+                         incoming().userId == userId &&
+                         incoming().resourceId == resourceId &&
+                         isValidWishlistItem(incoming());
+        allow update: if false;
+        allow delete: if isSignedIn() && request.auth.uid == userId;
+      }
+    }
+
+    // 2. Academic Resource Listings
+    match /resources/{resourceId} {
+      allow get: if isSignedIn() && isValidId(resourceId) && isNotBanned() && (
+        existing().status == 'active' ||
+        existing().ownerId == request.auth.uid ||
+        isAdmin()
+      );
+      allow list: if isSignedIn() && isNotBanned() && (
+        existing().status == 'active' ||
+        existing().ownerId == request.auth.uid ||
+        isAdmin()
+      );
+
+      allow create: if isSignedIn() && isValidId(resourceId) && isNotBanned() &&
+                       incoming().keys().hasAll(['ownerId', 'ownerName', 'ownerDepartment', 'ownerRating', 'title', 'description', 'category', 'condition', 'mode', 'availability', 'maxBorrowDays', 'pickupLocation', 'department', 'photoUrls', 'averageRating', 'reviewCount', 'status', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['ownerId', 'ownerName', 'ownerDepartment', 'ownerRating', 'title', 'description', 'category', 'condition', 'mode', 'availability', 'maxBorrowDays', 'pickupLocation', 'department', 'photoUrls', 'averageRating', 'reviewCount', 'status', 'createdAt', 'updatedAt']) &&
+                       isValidResource(incoming()) &&
+                       incoming().status == 'active' &&
+                       (
+                         incoming().ownerId == request.auth.uid ||
+                         isAdmin() ||
+                         (resourceId.matches('^seed_.*') && isInitialSeedWindow())
+                       );
+
+      allow update: if isSignedIn() && isValidId(resourceId) && isNotBanned() &&
+                       isValidResource(incoming()) &&
+                       incoming().ownerId == existing().ownerId &&
+                       incoming().createdAt == existing().createdAt && (
+                         // Admin moderation removal / restore
+                         (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'availability', 'updatedAt'])) ||
+                         // Owner edits listing fields or availability
+                         (existing().ownerId == request.auth.uid && existing().status == 'active' &&
+                          incoming().status == 'active' &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['ownerName', 'ownerDepartment', 'title', 'description', 'category', 'condition', 'mode', 'availability', 'maxBorrowDays', 'pickupLocation', 'department', 'photoUrls', 'updatedAt'])) ||
+                         // Review aggregate update on listing after transaction return
+                         (existing().status == 'active' &&
+                          incoming().status == existing().status &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['averageRating', 'reviewCount', 'updatedAt']))
+                       );
+
+      allow delete: if isSignedIn() && isValidId(resourceId) && (
+        (existing().ownerId == request.auth.uid && isNotBanned()) || isAdmin()
+      );
+
+      // 2b. Date-Range Booking Slots (Overlap Checking)
+      match /bookings/{bookingId} {
+        allow get, list: if isSignedIn() && isNotBanned() && (
+          existing().resourceId == resourceId
+        );
+        allow create: if isSignedIn() && isValidId(bookingId) && isNotBanned() &&
+                         incoming().keys().hasAll(['resourceId', 'ownerId', 'borrowerId', 'startDateMillis', 'endDateMillis', 'status', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['resourceId', 'ownerId', 'borrowerId', 'startDateMillis', 'endDateMillis', 'status', 'createdAt', 'updatedAt']) &&
+                         incoming().resourceId == resourceId &&
+                         isValidBookingSlot(incoming()) &&
+                         (
+                           incoming().borrowerId == request.auth.uid ||
+                           isAdmin() ||
+                           (bookingId.matches('^seed_.*') && isInitialSeedWindow())
+                         );
+        allow update: if isSignedIn() && isValidId(bookingId) && isNotBanned() &&
+                         isValidBookingSlot(incoming()) &&
+                         incoming().resourceId == existing().resourceId &&
+                         incoming().ownerId == existing().ownerId &&
+                         incoming().borrowerId == existing().borrowerId &&
+                         incoming().createdAt == existing().createdAt &&
+                         (request.auth.uid == existing().ownerId || request.auth.uid == existing().borrowerId || isAdmin()) &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['status', 'endDateMillis', 'updatedAt']);
+        allow delete: if isSignedIn() && (request.auth.uid == existing().ownerId || request.auth.uid == existing().borrowerId || isAdmin());
+      }
+    }
+
+    // 3. Borrow Requests & Transactions
+    match /borrow_requests/{requestId} {
+      allow get: if isSignedIn() && isValidId(requestId) && isNotBanned() && (
+        request.auth.uid in existing().participantIds || isAdmin()
+      );
+      allow list: if isSignedIn() && isNotBanned() && (
+        request.auth.uid in existing().participantIds || isAdmin()
+      );
+
+      allow create: if isSignedIn() && isValidId(requestId) && isNotBanned() &&
+                       incoming().keys().hasAll(['resourceId', 'resourceTitle', 'resourceCategory', 'resourcePhoto', 'resourceMode', 'ownerId', 'ownerName', 'borrowerId', 'borrowerName', 'borrowerDepartment', 'participantIds', 'startDateMillis', 'endDateMillis', 'dueDateMillis', 'message', 'status', 'rejectionReason', 'extensionRequested', 'requestedExtensionDays', 'extensionStatus', 'ownerReviewed', 'borrowerReviewed', 'reminderDayBeforeSent', 'reminderDueDaySent', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['resourceId', 'resourceTitle', 'resourceCategory', 'resourcePhoto', 'resourceMode', 'ownerId', 'ownerName', 'borrowerId', 'borrowerName', 'borrowerDepartment', 'participantIds', 'startDateMillis', 'endDateMillis', 'dueDateMillis', 'message', 'status', 'rejectionReason', 'extensionRequested', 'requestedExtensionDays', 'extensionStatus', 'ownerReviewed', 'borrowerReviewed', 'reminderDayBeforeSent', 'reminderDueDaySent', 'createdAt', 'updatedAt']) &&
+                       isValidBorrowRequest(incoming()) &&
+                       exists(/databases/$(database)/documents/resources/$(incoming().resourceId)) &&
+                       (
+                         (incoming().borrowerId == request.auth.uid && incoming().status == 'pending') ||
+                         isAdmin() ||
+                         (requestId.matches('^seed_.*') && isInitialSeedWindow() && request.auth.uid in incoming().participantIds)
+                       );
+
+      allow update: if isSignedIn() && isValidId(requestId) && isNotBanned() &&
+                       isValidBorrowRequest(incoming()) &&
+                       incoming().resourceId == existing().resourceId &&
+                       incoming().ownerId == existing().ownerId &&
+                       incoming().borrowerId == existing().borrowerId &&
+                       incoming().participantIds == existing().participantIds &&
+                       incoming().createdAt == existing().createdAt && (
+                         // Admin override
+                         isAdmin() ||
+                         // Owner Actions: approve/reject pending, mark borrowed, confirm returned, resolve extension, mark ownerReviewed, mark overdue
+                         (request.auth.uid == existing().ownerId && (
+                           (existing().status == 'pending' && incoming().status in ['approved', 'rejected'] &&
+                            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'rejectionReason', 'updatedAt'])) ||
+                           (existing().status == 'approved' && incoming().status == 'borrowed' &&
+                            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])) ||
+                           (existing().status in ['borrowed', 'overdue'] && incoming().status == 'returned' &&
+                            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])) ||
+                           (existing().status == 'borrowed' && incoming().status == 'overdue' &&
+                            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])) ||
+                           (existing().status in ['borrowed', 'overdue'] && existing().extensionStatus == 'pending' &&
+                            incoming().extensionStatus in ['approved', 'rejected'] &&
+                            incoming().diff(existing()).affectedKeys().hasOnly(['extensionStatus', 'dueDateMillis', 'endDateMillis', 'status', 'updatedAt'])) ||
+                           (existing().status == 'returned' && existing().ownerReviewed == false && incoming().ownerReviewed == true &&
+                            incoming().diff(existing()).affectedKeys().hasOnly(['ownerReviewed', 'updatedAt']))
+                         )) ||
+                         // Borrower Actions: cancel pending/approved, request extension, mark borrowerReviewed, mark overdue/reminders
+                         (request.auth.uid == existing().borrowerId && (
+                           (existing().status in ['pending', 'approved'] && incoming().status == 'cancelled' &&
+                            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])) ||
+                           (existing().status in ['borrowed', 'overdue'] && existing().extensionRequested == false &&
+                            incoming().extensionRequested == true && incoming().extensionStatus == 'pending' &&
+                            incoming().diff(existing()).affectedKeys().hasOnly(['extensionRequested', 'requestedExtensionDays', 'extensionStatus', 'updatedAt'])) ||
+                           (existing().status == 'borrowed' && incoming().status == 'overdue' &&
+                            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])) ||
+                           (existing().status in ['borrowed', 'overdue'] &&
+                            incoming().diff(existing()).affectedKeys().hasOnly(['reminderDayBeforeSent', 'reminderDueDaySent', 'updatedAt'])) ||
+                           (existing().status == 'returned' && existing().borrowerReviewed == false && incoming().borrowerReviewed == true &&
+                            incoming().diff(existing()).affectedKeys().hasOnly(['borrowerReviewed', 'updatedAt']))
+                         ))
+                       );
+
+      allow delete: if isAdmin();
+    }
+
+    // 4. Reviews & Ratings (Deterministic ID: transactionId_reviewerId)
+    match /reviews/{reviewId} {
+      allow get, list: if isSignedIn() && isNotBanned();
+
+      allow create: if isSignedIn() && isValidId(reviewId) && isNotBanned() &&
+                       incoming().keys().hasAll(['transactionId', 'resourceId', 'resourceTitle', 'reviewerId', 'reviewerName', 'revieweeId', 'revieweeName', 'direction', 'rating', 'comment', 'createdAt']) &&
+                       incoming().keys().hasOnly(['transactionId', 'resourceId', 'resourceTitle', 'reviewerId', 'reviewerName', 'revieweeId', 'revieweeName', 'direction', 'rating', 'comment', 'createdAt']) &&
+                       isValidReview(incoming()) &&
+                       reviewId == (incoming().transactionId + '_' + incoming().reviewerId) &&
+                       exists(/databases/$(database)/documents/borrow_requests/$(incoming().transactionId)) &&
+                       get(/databases/$(database)/documents/borrow_requests/$(incoming().transactionId)).data.status == 'returned' &&
+                       (
+                         (incoming().reviewerId == request.auth.uid &&
+                          request.auth.uid in get(/databases/$(database)/documents/borrow_requests/$(incoming().transactionId)).data.participantIds) ||
+                         isAdmin() ||
+                         (reviewId.matches('^seed_.*') && isInitialSeedWindow())
+                       );
+
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    // 5. Notifications (In-App + Email Notification Audit)
+    match /notifications/{notificationId} {
+      allow get, list: if isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+
+      allow create: if isSignedIn() && isValidId(notificationId) && isNotBanned() &&
+                       incoming().keys().hasAll(['userId', 'title', 'body', 'type', 'relatedId', 'isRead', 'emailDispatched', 'emailRecipient', 'createdAt']) &&
+                       incoming().keys().hasOnly(['userId', 'title', 'body', 'type', 'relatedId', 'isRead', 'emailDispatched', 'emailRecipient', 'createdAt']) &&
+                       isValidNotification(incoming());
+
+      allow update: if isSignedIn() && isValidId(notificationId) &&
+                       (existing().userId == request.auth.uid || isAdmin()) &&
+                       isValidNotification(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['isRead']);
+
+      allow delete: if isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+    }
+
+    // 6. Moderation Reports
+    match /reports/{reportId} {
+      allow get, list: if isSignedIn() && (existing().reporterId == request.auth.uid || isAdmin());
+
+      allow create: if isSignedIn() && isValidId(reportId) && isNotBanned() &&
+                       incoming().keys().hasAll(['reporterId', 'reporterName', 'targetType', 'targetId', 'targetName', 'reason', 'details', 'status', 'adminAction', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['reporterId', 'reporterName', 'targetType', 'targetId', 'targetName', 'reason', 'details', 'status', 'adminAction', 'createdAt', 'updatedAt']) &&
+                       isValidReport(incoming()) &&
+                       incoming().reporterId == request.auth.uid &&
+                       incoming().status == 'open';
+
+      allow update: if isAdmin() && isValidId(reportId) &&
+                       isValidReport(incoming()) &&
+                       incoming().reporterId == existing().reporterId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['status', 'adminAction', 'updatedAt']);
+
+      allow delete: if isAdmin();
+    }
+  }
+}
